@@ -24,7 +24,7 @@ for item in feed["items"]:
 			venue_name = venue.split(">")[1]
 			venue_link = venue.split("\"")[1]
 			venue_string = "["+venue_name+"]("+venue_link+")" + deets
-			print venue_string
+			print venue_string.encode('utf-8')
 			
 			nextcons.append(venue_string)
 
@@ -42,45 +42,43 @@ sidebar_string += "\n\nFor complete listing you can check [conventionscene.com](
 
 try: 
 	print "Logging in..."
-	r = praw.Reddit("Comic Convention Sidebar Updater")
-	r.set_oauth_app_info(cfg.oauth_client_id,
-						cfg.oauth_client_secret,
-						cfg.oauth_redirect_uri)
+	r = praw.Reddit(user_agent="Comic Convention Sidebar Updater",
+		client_id=cfg.oauth_client_id,
+		client_secret=cfg.oauth_client_secret,
+		username=cfg.username,
+		password=cfg.password)
+	print "DEBUG: oauth sent"
+
 	# url = r.get_authorize_url('comicconbot', 'identity edit modconfig modflair wikiedit wikiread', True)
 	# print url
 
 	# access_information = r.get_access_information(cfg.oauth_auth_code)
 	# print access_information["refresh_token"]
 
-	access_information = r.refresh_access_information(cfg.oauth_refresh_token)
-	r.set_access_credentials(**access_information)
-	authenticated_user = r.get_me()
+	authenticated_user = r.user.me()
 	print "Logged in as " + authenticated_user.name, authenticated_user.link_karma
 
 	for subreddit in cfg.subreddits:
 
 		print "Start r/"+subreddit
-		s = r.get_subreddit(subreddit)
+		s = r.subreddit(subreddit)
+		w = s.wiki["config/sidebar"]
 
 		try:
-			config = HTMLParser.HTMLParser().unescape(r.get_wiki_page(s,"config/sidebar").content_md)
+			desc = HTMLParser.HTMLParser().unescape(w.content_md)
 		except requests.exceptions.HTTPError:
 			print "Couldn't access format wiki page, reddit may be down."
 			raise
-			
-		print "Checking if sidebar needs updating..."
-		sidebar = r.get_settings(s)
-		submit_text = HTMLParser.HTMLParser().unescape(sidebar["submit_text"])
-		desc = HTMLParser.HTMLParser().unescape(sidebar['description'])
 
+		print "Checking if sidebar needs updating..."
 		startmarker, endmarker = desc.index("[](#StartMarker)"), desc.index("[](#MarkerEnd)") + len("[](#MarkerEnd)")
 		updated_desc = desc.replace(desc[startmarker:endmarker], "[](#StartMarker)\n \n" + sidebar_string + "\n \n[](#MarkerEnd)")
 
 		if updated_desc != desc:
 			print "Updating sidebar..."
-			s.update_settings(description=updated_desc.encode('utf8'), submit_text=submit_text)
+			w.edit(updated_desc, reason="/u/ComicConBot Scheduled Update")
 		print "Done r/"+subreddit
 
 	print "Done All"
-except praw.errors.InvalidCaptcha:
+except praw.exceptions.APIException:
     pass
